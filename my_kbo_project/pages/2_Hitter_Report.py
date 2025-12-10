@@ -44,7 +44,7 @@ def load_data():
     parent_dir = os.path.dirname(current_dir)
     
     # 3. 경로와 파일명을 합칩니다.
-    csv_path = os.path.join(parent_dir, "kbo_hitter_2025_tabs_final")
+    csv_path = os.path.join(parent_dir, "kbo_hitter_2025_tabs_final.csv")
     
     # 4. 이제 읽어옵니다.
     df = pd.read_csv(csv_path)
@@ -342,4 +342,5 @@ st.dataframe(
     use_container_width=True, hide_index=True
 
 )
+
 
