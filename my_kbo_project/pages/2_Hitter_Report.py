@@ -34,7 +34,47 @@ st.markdown("""
 # ---------------------------------------------------------
 @st.cache_data
 def load_data():
-    df = pd.read_csv("kbo_hitter_2025_tabs_final.csv")
+    # -----------------------------------------------------------
+    # [수정] 파일 경로를 절대 경로로 찾는 필살기 코드
+    # -----------------------------------------------------------
+    # 1. 현재 이 파일(1_Pitcher_Report.py)의 위치를 알아냅니다. (pages 폴더)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # 2. 부모 폴더(한 단계 위)로 올라갑니다. (csv 파일이 있는 곳)
+    parent_dir = os.path.dirname(current_dir)
+    
+    # 3. 경로와 파일명을 합칩니다.
+    csv_path = os.path.join(parent_dir, "kbo_hitter_2025_tabs_final")
+    
+    # 4. 이제 읽어옵니다.
+    df = pd.read_csv(csv_path)
+    
+    # (아래는 기존 전처리 코드 그대로 두시면 됩니다)
+    def parse_ip(val):
+        val = str(val)
+        try:
+            if ' ' in val: 
+                whole, frac = val.split(' ')
+                num, den = frac.split('/')
+                return float(whole) + (float(num) / float(den))
+            elif '/' in val:
+                num, den = val.split('/')
+                return float(num) / float(den)
+            else:
+                return float(val)
+        except:
+            return 0.0
+
+    df['IP_float'] = df['IP'].apply(parse_ip)
+
+    def parse_go_ao(val):
+        try:
+            return float(val)
+        except:
+            return 0.0
+    df['GO/AO_float'] = df['GO/AO'].apply(parse_go_ao)
+    
+    return df
     
     # 수치형 변환 대상 컬럼
     numeric_cols = ['AVG', 'SLG', 'OBP', 'OPS', 'RISP', 'PH-BA', 'GO/AO', 'BB/K', 'P/PA', 'ISOP']
@@ -302,3 +342,4 @@ st.dataframe(
     use_container_width=True, hide_index=True
 
 )
+
