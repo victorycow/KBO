@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -299,4 +300,5 @@ st.dataframe(
         'AVG': '{:.3f}', 'OBP': '{:.3f}', 'SLG': '{:.3f}', 'OPS': '{:.3f}', 'RISP': '{:.3f}', 'GPA': '{:.3f}'
     }),
     use_container_width=True, hide_index=True
+
 )
