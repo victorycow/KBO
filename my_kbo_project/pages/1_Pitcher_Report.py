@@ -26,6 +26,7 @@ st.markdown("""
     .dark-mode .style-card {
         background-color: #262730;
     }
+    /* 배지 스타일 */
     .badge-ace {
         background-color: #FFD700;
         color: black;
@@ -87,7 +88,7 @@ def load_data():
 df = load_data()
 
 # ---------------------------------------------------------
-# 3. 투구 스타일 판정 로직 함수 (수정됨)
+# 3. 투구 스타일 판정 로직 함수 (업데이트됨)
 # ---------------------------------------------------------
 def determine_pitching_style(row):
     k_9 = row['K/9']
@@ -99,38 +100,36 @@ def determine_pitching_style(row):
     ip = row['IP_float']
     gs = row['GS']
     
-    # 불펜 여부 확인 (선발 등판이 전체 경기의 절반 이하)
+    # 불펜 여부 확인
     is_bullpen = gs <= (g / 2) if g > 0 else True
     
-    # 1순위: 마당쇠 (Workhorse) - 불펜 투수 중 혹사 수준의 연투
+    # 1순위: 마당쇠 (Workhorse)
     if is_bullpen and g >= 65 and ip >= 65:
         return "Iron Man (Madang-soe)", "65경기, 65이닝 이상을 소화하며 팀을 위해 헌신한 마당쇠 유형입니다.", "💪🐎"
 
-    # 2순위: 성장형 투수 (Developing) - 성적이 저조하거나 경험이 필요한 경우
-    # 기준: ERA 6.00 이상이거나 WHIP 1.70 이상 (기량 발전 필요)
+    # 2순위: 성장형 투수 (Developing)
     if era >= 6.00 or whip >= 1.70:
         return "Developing Pitcher", "아직 다듬어지지 않았으며, 제구와 구위의 발전이 필요한 성장형 투수입니다.", "🌱"
 
-    # 3순위: 파워 피처 (기존 로직)
+    # 3순위: 파워 피처
     if k_9 >= 9.0:
         if go_ao > 1.3:
             return "Power Sinkerballer", "강력한 구위로 삼진과 땅볼을 동시에 유도하는 까다로운 유형입니다.", "🔥🪨"
         else:
             return "Power Pitcher", "압도적인 구위로 타자를 찍어 누르는 '닥터 K' 유형입니다.", "🔥"
             
-    # 4순위: 피네스 피처 (기존 로직)
+    # 4순위: 피네스 피처
     elif bb_9 <= 2.5:
         if go_ao > 1.3:
             return "Control Artist (Ground)", "정교한 제구력으로 땅볼을 유도해 투구수를 아끼는 유형입니다.", "🎨🪨"
         else:
             return "Finesse Pitcher", "구속보다는 칼 같은 제구력과 수싸움으로 타자를 요리합니다.", "🎨"
             
-    # 5순위: 솔리드 레귤러 (Solid Regular) - 특출난 유형은 아니지만 성적이 준수한 경우
-    # 기준: ERA 4.80 이하 (리그 평균 수준 상회)
+    # 5순위: 솔리드 레귤러 (Solid Regular)
     elif era <= 4.80:
         return "Solid Regular", "준수한 투구 능력을 바탕으로 팀 마운드의 중심을 잡아주는 주축 선수입니다.", "🛡️"
 
-    # 6순위: 그 외 (투구 성향에 따른 분류)
+    # 6순위: 그 외
     else:
         if go_ao > 1.15:
             return "Groundball Pitcher", "맞춰 잡는 능력이 좋으며 내야 수비와의 호흡이 중요합니다.", "🪨"
@@ -152,11 +151,11 @@ def get_player_badge(row):
     
     is_starter = gs > (g / 2) if g > 0 else False
     
-    # 에이스 조건: 선발이면서 100이닝 이상, ERA 3.50 이하
+    # 에이스 조건: 선발, 100이닝+, ERA 3.50 이하
     if is_starter:
         if ip >= 100 and era <= 3.50:
             return "👑 Team Ace"
-    # 필승조 조건: 불펜이면서 (세이브 10+ 또는 홀드 10+), ERA 4.50 이하
+    # 필승조 조건: 불펜, (세이브 10+ or 홀드 10+), ERA 4.50 이하
     else:
         if (sv >= 10 or hld >= 10) and era <= 4.50:
             return "🔒 Winning Setup/Closer"
@@ -176,7 +175,6 @@ selected_player_name = st.sidebar.selectbox("Select Player", player_list)
 # 선택된 선수 데이터 추출
 player_data = df[(df['팀명'] == selected_team) & (df['선수명'] == selected_player_name)].iloc[0]
 
-# 선수의 보직 판별
 player_role = 'Starter' if player_data['GS'] > player_data['G']/2 else 'Reliever'
 
 st.sidebar.markdown("---")
@@ -222,7 +220,7 @@ stats_to_plot = {
 # ---------------------------------------------------------
 # 6. 대시보드 UI
 # ---------------------------------------------------------
-# [수정] 타이틀 섹션에 배지 표시 로직 추가
+# [배지 표시 로직]
 special_badge = get_player_badge(player_data)
 badge_html = ""
 if special_badge:
@@ -360,9 +358,43 @@ if not sim_df.empty:
 else:
     st.warning("비교할 대상 데이터가 충분하지 않습니다.")
 
+# ---------------------------------------------------------
+# [추가됨] 리그 전체 위치 시각화 (League Context)
+# ---------------------------------------------------------
 st.markdown("---")
+st.subheader("📊 League Context (K/9 vs BB/9)")
+st.caption(f"**X축: 9이닝당 볼넷(BB/9)** - 왼쪽일수록 제구 좋음 | **Y축: 9이닝당 삼진(K/9)** - 위쪽일수록 구위 좋음")
 
+# 산점도 그리기
+fig_scatter = px.scatter(
+    ref_df, 
+    x='BB/9', 
+    y='K/9', 
+    hover_name='선수명', 
+    hover_data=['팀명', 'ERA'],
+    color='팀명', 
+    title=f"Pitching Style Map ({compare_group})"
+)
+
+# 현재 선택된 선수 강조 (빨간 점 + 큰 사이즈)
+current_p = ref_df[ref_df['선수명'] == selected_player_name]
+if not current_p.empty:
+    fig_scatter.add_trace(go.Scatter(
+        x=current_p['BB/9'], 
+        y=current_p['K/9'],
+        mode='markers+text',
+        marker=dict(color='red', size=15, line=dict(width=2, color='black')),
+        name=selected_player_name,
+        text=[selected_player_name],
+        textposition="top center"
+    ))
+
+st.plotly_chart(fig_scatter, use_container_width=True)
+
+# ---------------------------------------------------------
 # (4) 하단: 상세 데이터 테이블
+# ---------------------------------------------------------
+st.markdown("---")
 st.markdown("### 📋 Season Stats Detail")
 
 display_cols = ['G', 'GS', 'W', 'L', 'SV', 'HLD', 'IP', 'ERA', 'WHIP', 'SO', 'BB', 'OPS', 'BABIP']
