@@ -34,46 +34,53 @@ st.markdown("""
 # ---------------------------------------------------------
 @st.cache_data
 def load_data():
-    import os
+    # -----------------------------------------------------------
+    # 1. 절대 경로로 파일 찾기 (경로 문제 해결용)
+    # -----------------------------------------------------------
+    import os # 혹시 맨 위에 없으면 추가 필요
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(current_dir)
     
-    # [수정 1] 방금 수집한 최신 파일명으로 변경
-    # (파일이 같은 폴더에 있다면 parent_dir 대신 current_dir 사용)
-    csv_filename = "kbo_hitter_2025_pagination_fix.csv" 
+    # ★주의: 파일명이 'hitter'인지 꼭 확인하세요!
+    csv_path = os.path.join(parent_dir, "kbo_hitter_2025_pagination_fix.csv")
     
-    # 같은 폴더 우선 검색, 없으면 상위 폴더 검색
-    if os.path.exists(os.path.join(current_dir, csv_filename)):
-        csv_path = os.path.join(current_dir, csv_filename)
-    else:
-        csv_path = os.path.join(parent_dir, csv_filename)
-    
-    if not os.path.exists(csv_path):
-        st.error(f"데이터 파일을 찾을 수 없습니다: {csv_filename}")
-        return pd.DataFrame()
-
     df = pd.read_csv(csv_path)
     
-    # 수치형 변환
-    numeric_cols = ['AVG', 'SLG', 'OBP', 'OPS', 'RISP', 'PH-BA', 'GO/AO', 'BB/K', 'P/PA', 'ISOP', 'HR', 'RBI', 'PA', 'GPA']
+    # -----------------------------------------------------------
+    # 2. 타자(Hitter) 전용 전처리 로직 (투수 코드는 삭제됨)
+    # -----------------------------------------------------------
+    # 수치형 변환 대상 컬럼
+    numeric_cols = ['AVG', 'SLG', 'OBP', 'OPS', 'RISP', 'PH-BA', 'GO/AO', 'BB/K', 'P/PA', 'ISOP']
+    
     for col in numeric_cols:
+        # 데이터에 '-' 같은 문자가 섞여 있을 때 0으로 바꾸고 숫자로 변환
         if col in df.columns:
             df[col] = pd.to_numeric(df[col].astype(str).replace({'-': '0'}), errors='coerce').fillna(0.0)
 
-    # [수정 2] 동명이인 구분을 위한 '표시용 이름' 생성
-    # ID가 있다면 "이주형 (67341)" 형태로 만들어 구분
-    if 'ID' in df.columns:
-        df['display_name'] = df.apply(lambda x: f"{x['선수명']} ({str(x['ID'])[-4:]})", axis=1)
-    else:
-        df['display_name'] = df['선수명']
+    # 기본 수치형 컬럼 결측치 처리
+    if 'PA' in df.columns:
+        df['PA'] = df['PA'].fillna(0)
+    
+    if 'GPA' in df.columns:
+        df['GPA'] = df['GPA'].fillna(0.0)
+    
+    return df
+    
+    # 수치형 변환 대상 컬럼
+    numeric_cols = ['AVG', 'SLG', 'OBP', 'OPS', 'RISP', 'PH-BA', 'GO/AO', 'BB/K', 'P/PA', 'ISOP']
+    
+    for col in numeric_cols:
+        # 문자열로 변환 후, '-' 등 예외 처리 및 float 변환
+        df[col] = pd.to_numeric(df[col].astype(str).replace({'-': '0'}), errors='coerce').fillna(0.0)
 
+    # 기본 수치형 컬럼 결측치 처리
+    df['PA'] = df['PA'].fillna(0)
+    df['GPA'] = df['GPA'].fillna(0.0)
+    
     return df
 
 df = load_data()
-
-if df.empty:
-    st.stop()
 
 # ---------------------------------------------------------
 # 3. 타자 스타일 판정 로직
@@ -285,3 +292,4 @@ st.dataframe(
     }),
     use_container_width=True, hide_index=True
 )
+
