@@ -30,39 +30,70 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. 데이터 로드 및 전처리
+# 2. 데이터 로드 및 전처리 (경로 탐색 강화)
 # ---------------------------------------------------------
 @st.cache_data
 def load_data():
-    import os
+    csv_filename = "kbo_hitter_2025_pagination_fix.csv"
     
-    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # 1. 현재 파일(2_Hitter_Report.py)의 위치 파악
+    current_file_path = os.path.abspath(__file__)
+    current_dir = os.path.dirname(current_file_path)
     parent_dir = os.path.dirname(current_dir)
     
-    # [수정 1] 방금 수집한 최신 파일명으로 변경
-    # (파일이 같은 폴더에 있다면 parent_dir 대신 current_dir 사용)
-    csv_filename = "kbo_hitter_2025_pagination_fix.csv" 
+    # 2. 검색할 경로 후보군 (순서대로 탐색)
+    possible_paths = [
+        os.path.join(current_dir, csv_filename),       # 같은 폴더
+        os.path.join(parent_dir, csv_filename),        # 상위 폴더
+        os.path.join(current_dir, "data", csv_filename), # 하위 data 폴더 (혹시 있다면)
+        csv_filename                                   # 작업 디렉토리 기준
+    ]
     
-    # 같은 폴더 우선 검색, 없으면 상위 폴더 검색
-    if os.path.exists(os.path.join(current_dir, csv_filename)):
-        csv_path = os.path.join(current_dir, csv_filename)
-    else:
-        csv_path = os.path.join(parent_dir, csv_filename)
-    
-    if not os.path.exists(csv_path):
-        st.error(f"데이터 파일을 찾을 수 없습니다: {csv_filename}")
-        return pd.DataFrame()
+    found_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            found_path = path
+            break
+            
+    # 3. 파일을 못 찾았을 때 디버깅 정보 출력 (Streamlit 화면에 보임)
+    if found_path is None:
+        st.error(f"❌ 데이터 파일('{csv_filename}')을 찾을 수 없습니다.")
+        
+        st.warning("아래 내용을 확인해주세요:")
+        st.markdown("""
+        1. **GitHub 업로드 확인**: 로컬에서 생성된 csv 파일이 GitHub 저장소에 업로드(Push) 되었나요?
+        2. **파일명 확인**: 코드상의 파일명과 실제 파일명이 정확히 일치하나요?
+        """)
+        
+        # 현재 서버의 파일 목록 출력 (디버깅용)
+        st.subheader("📂 서버 디렉토리 정보 (디버깅용)")
+        st.write(f"**현재 위치:** `{current_dir}`")
+        try:
+            st.write(f"**파일 목록:** {os.listdir(current_dir)}")
+        except:
+            st.write("파일 목록 읽기 실패")
+            
+        st.write(f"**상위 위치:** `{parent_dir}`")
+        try:
+            st.write(f"**상위 파일 목록:** {os.listdir(parent_dir)}")
+        except:
+            pass
+            
+        return pd.DataFrame() # 빈 데이터프레임 반환
 
-    df = pd.read_csv(csv_path)
+    # 4. 데이터 로드 및 전처리
+    try:
+        df = pd.read_csv(found_path)
+    except Exception as e:
+        st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
+        return pd.DataFrame()
     
-    # 수치형 변환
     numeric_cols = ['AVG', 'SLG', 'OBP', 'OPS', 'RISP', 'PH-BA', 'GO/AO', 'BB/K', 'P/PA', 'ISOP', 'HR', 'RBI', 'PA', 'GPA']
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col].astype(str).replace({'-': '0'}), errors='coerce').fillna(0.0)
 
-    # [수정 2] 동명이인 구분을 위한 '표시용 이름' 생성
-    # ID가 있다면 "이주형 (67341)" 형태로 만들어 구분
+    # 동명이인 처리 (ID 기반 이름 생성)
     if 'ID' in df.columns:
         df['display_name'] = df.apply(lambda x: f"{x['선수명']} ({str(x['ID'])[-4:]})", axis=1)
     else:
@@ -106,16 +137,15 @@ st.sidebar.header("🔍 Player Finder")
 team_list = sorted(df['팀명'].unique())
 selected_team = st.sidebar.selectbox("Select Team", team_list)
 
-# [수정 3] 선수 선택 (동명이인 처리된 display_name 사용)
-# 팀 내 선수 필터링
+# 선수 선택 (display_name 사용)
 team_players = df[df['팀명'] == selected_team].sort_values(by='선수명')
 player_list = team_players['display_name'].unique()
 
 selected_player_display = st.sidebar.selectbox("Select Player", player_list)
 
-# 선택된 선수 데이터 추출 (display_name 기준)
+# 선택된 선수 데이터 추출
 player_data = df[df['display_name'] == selected_player_display].iloc[0]
-selected_player_real_name = player_data['선수명'] # 실제 이름 별도 저장
+selected_player_real_name = player_data['선수명']
 
 # --- 비교군 설정 ---
 st.sidebar.markdown("---")
@@ -126,14 +156,13 @@ is_regular = player_data['PA'] >= pa_threshold
 
 group_option = st.sidebar.radio(
     "Compare Group:",
-    ("Regulars (PA ≥ 200)", "All Hitters (PA ≥ 0)"), # [수정 4] 필터 조건 완화 표시
+    ("Regulars (PA ≥ 200)", "All Hitters (PA ≥ 0)"),
     index=0 if is_regular else 1
 )
 
 if "Regulars" in group_option:
     ref_df = df[df['PA'] >= pa_threshold]
 else:
-    # [수정 5] 모든 선수 보기 위해 최소 타석 기준 제거 (0으로 설정)
     ref_df = df[df['PA'] >= 0]
 
 st.sidebar.caption(f"Comparing with **{len(ref_df)}** hitters.")
@@ -166,8 +195,6 @@ st.markdown(f"**Team:** {player_data['팀명']} | **PA:** {int(player_data['PA']
 def get_rank_str(value, col, ascending=False):
     if len(ref_df) == 0: return "-"
     rank = ref_df[col].rank(ascending=ascending, method='min')
-    # 동명이인이 있을 수 있으므로 display_name으로 매칭
-    # ref_df에도 display_name이 있으므로 이를 이용
     p_rank = rank[ref_df['display_name'] == selected_player_display]
     if len(p_rank) > 0:
         return f"#{int(p_rank.values[0])}/{len(ref_df)}"
@@ -259,7 +286,7 @@ if not sim_df.empty and len(sim_df) > 1:
             if idx == target_idx: continue
             dist = distance.euclidean(target_vec, row.values)
             distances.append({
-                '선수명': sim_df.loc[idx]['display_name'], # 표시용 이름 사용
+                '선수명': sim_df.loc[idx]['display_name'],
                 '팀명': sim_df.loc[idx]['팀명'], 
                 'OPS': sim_df.loc[idx]['OPS'], 
                 'dist': dist
