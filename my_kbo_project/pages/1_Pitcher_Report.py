@@ -52,35 +52,49 @@ st.markdown("""
 # ---------------------------------------------------------
 @st.cache_data
 def load_data():
+    # -----------------------------------------------------------
+    # 1. 절대 경로로 파일 찾기 (경로 문제 해결용)
+    # -----------------------------------------------------------
+    import os # 혹시 맨 위에 없으면 추가 필요
+    
     current_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(current_dir)
-    csv_path = os.path.join(parent_dir, "kbo_pitcher_2025_tabs_final.csv")
+    
+    # ★주의: 파일명이 'hitter'인지 꼭 확인하세요!
+    csv_path = os.path.join(parent_dir, "kbo_hitter_2025_pagination_fix.csv")
     
     df = pd.read_csv(csv_path)
     
-    def parse_ip(val):
-        val = str(val)
-        try:
-            if ' ' in val: 
-                whole, frac = val.split(' ')
-                num, den = frac.split('/')
-                return float(whole) + (float(num) / float(den))
-            elif '/' in val:
-                num, den = val.split('/')
-                return float(num) / float(den)
-            else:
-                return float(val)
-        except:
-            return 0.0
+    # -----------------------------------------------------------
+    # 2. 타자(Hitter) 전용 전처리 로직 (투수 코드는 삭제됨)
+    # -----------------------------------------------------------
+    # 수치형 변환 대상 컬럼
+    numeric_cols = ['AVG', 'SLG', 'OBP', 'OPS', 'RISP', 'PH-BA', 'GO/AO', 'BB/K', 'P/PA', 'ISOP']
+    
+    for col in numeric_cols:
+        # 데이터에 '-' 같은 문자가 섞여 있을 때 0으로 바꾸고 숫자로 변환
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col].astype(str).replace({'-': '0'}), errors='coerce').fillna(0.0)
 
-    df['IP_float'] = df['IP'].apply(parse_ip)
+    # 기본 수치형 컬럼 결측치 처리
+    if 'PA' in df.columns:
+        df['PA'] = df['PA'].fillna(0)
+    
+    if 'GPA' in df.columns:
+        df['GPA'] = df['GPA'].fillna(0.0)
+    
+    return df
+    
+    # 수치형 변환 대상 컬럼
+    numeric_cols = ['AVG', 'SLG', 'OBP', 'OPS', 'RISP', 'PH-BA', 'GO/AO', 'BB/K', 'P/PA', 'ISOP']
+    
+    for col in numeric_cols:
+        # 문자열로 변환 후, '-' 등 예외 처리 및 float 변환
+        df[col] = pd.to_numeric(df[col].astype(str).replace({'-': '0'}), errors='coerce').fillna(0.0)
 
-    def parse_go_ao(val):
-        try:
-            return float(val)
-        except:
-            return 0.0
-    df['GO/AO_float'] = df['GO/AO'].apply(parse_go_ao)
+    # 기본 수치형 컬럼 결측치 처리
+    df['PA'] = df['PA'].fillna(0)
+    df['GPA'] = df['GPA'].fillna(0.0)
     
     return df
 
@@ -380,3 +394,4 @@ st.dataframe(
     use_container_width=True,
     hide_index=True
 )
+
