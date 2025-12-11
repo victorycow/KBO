@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from scipy.spatial import distance # 거리 계산을 위해 추가
+from scipy.spatial import distance
 
 # ---------------------------------------------------------
 # 1. 페이지 및 스타일 설정
@@ -26,6 +26,24 @@ st.markdown("""
     .dark-mode .style-card {
         background-color: #262730;
     }
+    .badge-ace {
+        background-color: #FFD700;
+        color: black;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: bold;
+        font-size: 0.8em;
+        margin-left: 8px;
+    }
+    .badge-pilseung {
+        background-color: #1E90FF;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: bold;
+        font-size: 0.8em;
+        margin-left: 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -34,22 +52,12 @@ st.markdown("""
 # ---------------------------------------------------------
 @st.cache_data
 def load_data():
-    # -----------------------------------------------------------
-    # [수정] 파일 경로를 절대 경로로 찾는 필살기 코드
-    # -----------------------------------------------------------
-    # 1. 현재 이 파일(1_Pitcher_Report.py)의 위치를 알아냅니다. (pages 폴더)
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # 2. 부모 폴더(한 단계 위)로 올라갑니다. (csv 파일이 있는 곳)
     parent_dir = os.path.dirname(current_dir)
-    
-    # 3. 경로와 파일명을 합칩니다.
     csv_path = os.path.join(parent_dir, "kbo_pitcher_2025_tabs_final.csv")
     
-    # 4. 이제 읽어옵니다.
     df = pd.read_csv(csv_path)
     
-    # (아래는 기존 전처리 코드 그대로 두시면 됩니다)
     def parse_ip(val):
         val = str(val)
         try:
@@ -67,34 +75,6 @@ def load_data():
 
     df['IP_float'] = df['IP'].apply(parse_ip)
 
-    def parse_go_ao(val):
-        try:
-            return float(val)
-        except:
-            return 0.0
-    df['GO/AO_float'] = df['GO/AO'].apply(parse_go_ao)
-    
-    return df
-    
-    # (1) 이닝 변환
-    def parse_ip(val):
-        val = str(val)
-        try:
-            if ' ' in val: 
-                whole, frac = val.split(' ')
-                num, den = frac.split('/')
-                return float(whole) + (float(num) / float(den))
-            elif '/' in val:
-                num, den = val.split('/')
-                return float(num) / float(den)
-            else:
-                return float(val)
-        except:
-            return 0.0
-
-    df['IP_float'] = df['IP'].apply(parse_ip)
-
-    # (2) GO/AO 변환
     def parse_go_ao(val):
         try:
             return float(val)
@@ -107,28 +87,50 @@ def load_data():
 df = load_data()
 
 # ---------------------------------------------------------
-# 3. 투구 스타일 판정 로직 함수
+# 3. 투구 스타일 판정 로직 함수 (수정됨)
 # ---------------------------------------------------------
 def determine_pitching_style(row):
     k_9 = row['K/9']
     bb_9 = row['BB/9']
     go_ao = row['GO/AO_float']
+    era = row['ERA']
+    whip = row['WHIP']
+    g = row['G']
+    ip = row['IP_float']
+    gs = row['GS']
     
-    # 1순위: 파워 피처
+    # 불펜 여부 확인 (선발 등판이 전체 경기의 절반 이하)
+    is_bullpen = gs <= (g / 2) if g > 0 else True
+    
+    # 1순위: 마당쇠 (Workhorse) - 불펜 투수 중 혹사 수준의 연투
+    if is_bullpen and g >= 65 and ip >= 65:
+        return "Iron Man (Madang-soe)", "65경기, 65이닝 이상을 소화하며 팀을 위해 헌신한 마당쇠 유형입니다.", "💪🐎"
+
+    # 2순위: 성장형 투수 (Developing) - 성적이 저조하거나 경험이 필요한 경우
+    # 기준: ERA 6.00 이상이거나 WHIP 1.70 이상 (기량 발전 필요)
+    if era >= 6.00 or whip >= 1.70:
+        return "Developing Pitcher", "아직 다듬어지지 않았으며, 제구와 구위의 발전이 필요한 성장형 투수입니다.", "🌱"
+
+    # 3순위: 파워 피처 (기존 로직)
     if k_9 >= 9.0:
         if go_ao > 1.3:
             return "Power Sinkerballer", "강력한 구위로 삼진과 땅볼을 동시에 유도하는 까다로운 유형입니다.", "🔥🪨"
         else:
             return "Power Pitcher", "압도적인 구위로 타자를 찍어 누르는 '닥터 K' 유형입니다.", "🔥"
             
-    # 2순위: 피네스 피처
+    # 4순위: 피네스 피처 (기존 로직)
     elif bb_9 <= 2.5:
         if go_ao > 1.3:
             return "Control Artist (Ground)", "정교한 제구력으로 땅볼을 유도해 투구수를 아끼는 유형입니다.", "🎨🪨"
         else:
             return "Finesse Pitcher", "구속보다는 칼 같은 제구력과 수싸움으로 타자를 요리합니다.", "🎨"
             
-    # 3순위: 그 외
+    # 5순위: 솔리드 레귤러 (Solid Regular) - 특출난 유형은 아니지만 성적이 준수한 경우
+    # 기준: ERA 4.80 이하 (리그 평균 수준 상회)
+    elif era <= 4.80:
+        return "Solid Regular", "준수한 투구 능력을 바탕으로 팀 마운드의 중심을 잡아주는 주축 선수입니다.", "🛡️"
+
+    # 6순위: 그 외 (투구 성향에 따른 분류)
     else:
         if go_ao > 1.15:
             return "Groundball Pitcher", "맞춰 잡는 능력이 좋으며 내야 수비와의 호흡이 중요합니다.", "🪨"
@@ -138,7 +140,31 @@ def determine_pitching_style(row):
             return "Balanced Pitcher", "특별한 치우침 없이 상황에 맞춰 던지는 밸런스형 투수입니다.", "⚖️"
 
 # ---------------------------------------------------------
-# 4. 사이드바 및 선수 선택 + [추가 기능 4] 비교군 분리
+# [추가] 에이스 / 필승조 배지 판별 함수
+# ---------------------------------------------------------
+def get_player_badge(row):
+    gs = row['GS']
+    g = row['G']
+    ip = row['IP_float']
+    era = row['ERA']
+    sv = row['SV']
+    hld = row['HLD']
+    
+    is_starter = gs > (g / 2) if g > 0 else False
+    
+    # 에이스 조건: 선발이면서 100이닝 이상, ERA 3.50 이하
+    if is_starter:
+        if ip >= 100 and era <= 3.50:
+            return "👑 Team Ace"
+    # 필승조 조건: 불펜이면서 (세이브 10+ 또는 홀드 10+), ERA 4.50 이하
+    else:
+        if (sv >= 10 or hld >= 10) and era <= 4.50:
+            return "🔒 Winning Setup/Closer"
+            
+    return None
+
+# ---------------------------------------------------------
+# 4. 사이드바 및 선수 선택
 # ---------------------------------------------------------
 st.sidebar.header("🔍 Player Finder")
 team_list = sorted(df['팀명'].unique())
@@ -150,19 +176,17 @@ selected_player_name = st.sidebar.selectbox("Select Player", player_list)
 # 선택된 선수 데이터 추출
 player_data = df[(df['팀명'] == selected_team) & (df['선수명'] == selected_player_name)].iloc[0]
 
-# --- [추가 기능 4] 선발/불펜 비교군 분리 로직 시작 ---
-# 선수의 보직 판별 (선발 등판이 전체 경기의 50% 초과면 선발)
+# 선수의 보직 판별
 player_role = 'Starter' if player_data['GS'] > player_data['G']/2 else 'Reliever'
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ Analysis Settings")
 compare_group = st.sidebar.radio(
     "Compare Group:",
-    (f"Same Role ({player_role}s Only)", "All Pitchers"), # 같은 보직 비교를 기본값으로
+    (f"Same Role ({player_role}s Only)", "All Pitchers"),
     help="선수의 보직(선발/불펜)에 맞는 선수들과 비교할지, 전체 투수와 비교할지 선택합니다."
 )
 
-# 비교군 필터링 (최소 10이닝 이상 투수 대상)
 base_ref = df[df['IP_float'] >= 10]
 
 if "Same Role" in compare_group:
@@ -173,9 +197,7 @@ if "Same Role" in compare_group:
 else:
     ref_df = base_ref
 
-# 비교군 통계 정보 사이드바 표시
 st.sidebar.caption(f"Comparing with **{len(ref_df)}** pitchers.")
-# --- [추가 기능 4] 종료 ---
 
 # ---------------------------------------------------------
 # 5. 백분위 계산
@@ -200,35 +222,39 @@ stats_to_plot = {
 # ---------------------------------------------------------
 # 6. 대시보드 UI
 # ---------------------------------------------------------
-st.title(f"⚾ {player_data['선수명']} Scouting Report")
+# [수정] 타이틀 섹션에 배지 표시 로직 추가
+special_badge = get_player_badge(player_data)
+badge_html = ""
+if special_badge:
+    badge_color = "#FFD700" if "Ace" in special_badge else "#1E90FF"
+    text_color = "black" if "Ace" in special_badge else "white"
+    badge_html = f'<span style="background-color:{badge_color}; color:{text_color}; padding: 4px 10px; border-radius: 5px; font-size: 0.6em; vertical-align: middle; margin-left: 10px;">{special_badge}</span>'
+
+st.markdown(f"<h1>⚾ {player_data['선수명']} Scouting Report {badge_html}</h1>", unsafe_allow_html=True)
 st.markdown(f"**Team:** {player_data['팀명']} | **Role:** {player_role}")
 
-# --- [추가 기능 2] 순위(Rank) 배지 계산 함수 ---
+# 순위(Rank) 배지 계산 함수
 def get_rank_str(value, col, ascending=True):
-    # 해당 스탯의 순위 계산 (min 방식: 동점자 발생 시 1등, 1등, 3등...)
     rank = ref_df[col].rank(ascending=ascending, method='min')
-    # 현재 선수의 순위 찾기
     p_rank = rank[ref_df['선수명'] == selected_player_name]
     
     if len(p_rank) > 0:
         p_rank = int(p_rank.values[0])
         total = len(ref_df)
-        return f"#{p_rank}/{total}" # 예: #5/120
+        return f"#{p_rank}/{total}"
     return "-"
-# -----------------------------------------------
 
-# (1) KPI Metrics (순위 정보 추가)
+# (1) KPI Metrics
 kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
 
-# 각 지표별 순위 계산
-era_rank_str = get_rank_str(player_data['ERA'], 'ERA', True) # 낮을수록 좋음
-ops_rank_str = get_rank_str(player_data['OPS'], 'OPS', True) # 낮을수록 좋음
-whip_rank_str = get_rank_str(player_data['WHIP'], 'WHIP', True) # 낮을수록 좋음
-so_rank_str = get_rank_str(player_data['SO'], 'SO', False) # 높을수록 좋음
+era_rank_str = get_rank_str(player_data['ERA'], 'ERA', True)
+ops_rank_str = get_rank_str(player_data['OPS'], 'OPS', True)
+whip_rank_str = get_rank_str(player_data['WHIP'], 'WHIP', True)
+so_rank_str = get_rank_str(player_data['SO'], 'SO', False)
 
 kpi1.metric("ERA", f"{player_data['ERA']:.2f}", delta=f"Rank: {era_rank_str}", delta_color="off")
 kpi2.metric("OPS", f"{player_data['OPS']:.3f}", delta=f"Rank: {ops_rank_str}", delta_color="off")
-kpi3.metric("Record", f"{player_data['W']}W - {player_data['L']}L") # 승패는 순위보단 기록 자체
+kpi3.metric("Record", f"{player_data['W']}W - {player_data['L']}L")
 kpi4.metric("WHIP", f"{player_data['WHIP']:.2f}", delta=f"Rank: {whip_rank_str}", delta_color="off")
 kpi5.metric("Strikeouts", f"{player_data['SO']}", delta=f"Rank: {so_rank_str}", delta_color="off")
 
@@ -279,9 +305,8 @@ with col_right:
     c2.metric("BB/9 (제구)", f"{player_data['BB/9']}", delta="Good" if player_data['BB/9'] < 2.5 else "Normal", delta_color="inverse")
     c3.metric("GO/AO", f"{player_data['GO/AO_float']}", help="1.2 이상이면 땅볼형, 0.8 이하면 뜬공형")
 
-    # BABIP 운 분석
     babip = player_data['BABIP']
-    avg_babip = ref_df['BABIP'].mean() # 비교군 평균 기준
+    avg_babip = ref_df['BABIP'].mean()
     luck_val = babip - avg_babip
     
     if luck_val < -0.035:
@@ -293,45 +318,36 @@ with col_right:
         
     st.markdown(f"**BABIP Analysis:** {luck_msg} (vs Group Avg {avg_babip:.3f})")
 
-# --- [추가 기능 3] 유사한 투수 찾기 (Similarity Search) ---
+# --- 유사한 투수 찾기 (Similarity Search) ---
 st.markdown("---")
 st.subheader("👯 Similar Pitchers")
 st.caption(f"현재 선택된 비교군({compare_group}) 내에서 **ERA, WHIP, K/9, BB/9, GO/AO** 패턴이 가장 유사한 선수들입니다.")
 
-# 1. 비교에 사용할 데이터 준비 (결측치 제거)
 sim_cols = ['ERA', 'WHIP', 'K/9', 'BB/9', 'GO/AO_float']
 sim_df = ref_df.dropna(subset=sim_cols).copy()
 
 if not sim_df.empty:
-    # 2. 데이터 정규화 (Z-Score) - 스케일 차이 보정
-    # (예: K/9는 10단위지만 ERA는 1단위이므로 그냥 계산하면 K/9 영향력이 너무 커짐)
     norm_df = (sim_df[sim_cols] - sim_df[sim_cols].mean()) / sim_df[sim_cols].std()
     
-    # 현재 선수의 정규화된 스탯 가져오기
     if selected_player_name in sim_df['선수명'].values:
         target_idx = sim_df[sim_df['선수명'] == selected_player_name].index[0]
         target_vec = norm_df.loc[target_idx].values
 
         distances = []
         for idx, row in norm_df.iterrows():
-            if idx == target_idx: continue # 본인 제외
+            if idx == target_idx: continue
             
-            # 유클리드 거리 계산
             dist = distance.euclidean(target_vec, row.values)
-            
-            # 원본 데이터 정보 저장을 위해 sim_df에서 정보 가져오기
             original_row = sim_df.loc[idx]
             distances.append({
                 '선수명': original_row['선수명'],
                 '팀명': original_row['팀명'],
                 'ERA': original_row['ERA'],
-                '유사도': dist # 값이 작을수록 유사
+                '유사도': dist
             })
         
-        # 거리가 가까운 순(유사도 높은 순) 정렬
         similar_players = sorted(distances, key=lambda x: x['유사도'])[:3]
         
-        # 카드 형태로 표시
         sc1, sc2, sc3 = st.columns(3)
         for i, col in enumerate([sc1, sc2, sc3]):
             if i < len(similar_players):
@@ -343,7 +359,6 @@ if not sim_df.empty:
         st.warning("비교군 내에 현재 선수의 데이터가 부족하여 유사도를 계산할 수 없습니다.")
 else:
     st.warning("비교할 대상 데이터가 충분하지 않습니다.")
-# -------------------------------------------------------
 
 st.markdown("---")
 
@@ -364,6 +379,4 @@ st.dataframe(
     stats_df.style.format(format_dict, na_rep="-"),
     use_container_width=True,
     hide_index=True
-
 )
-
